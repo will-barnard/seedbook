@@ -1,0 +1,20 @@
+{
+  "name": "seedbook-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Seedbook — sales lead tracker backend (Express + Postgres)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1"
+  }
+}
