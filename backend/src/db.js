@@ -1,8 +1,10 @@
-// Postgres connection pool + idempotent schema bootstrap.
+// Postgres connection pool + numbered migrations.
 //
-// Migrations run on every boot with CREATE TABLE / ADD COLUMN IF NOT EXISTS so
-// they're safe on both fresh and existing databases. Fine for a single-service
-// app; graduate to a real migration tool if the schema grows teeth.
+// Migrations are the .sql files in ./migrations, applied in filename order on
+// boot, each in its own transaction, and recorded in schema_migrations. 001 is
+// the original inline schema and is written with IF NOT EXISTS, so databases
+// that predate this runner adopt it without changes.
+import fs from "node:fs/promises";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -14,56 +16,47 @@ export const pool = new Pool({
   max: 10,
 });
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS users (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email        VARCHAR(255) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  is_admin     BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+const MIGRATIONS_DIR = new URL("./migrations/", import.meta.url);
 
-CREATE TABLE IF NOT EXISTS leads (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name              VARCHAR(255) NOT NULL,
-  company           VARCHAR(255),
-  title             VARCHAR(255),
-  email             VARCHAR(255),
-  phone             VARCHAR(64),
-  -- Relationship / how you know them, warmth, mutual contacts, etc.
-  relationship      TEXT,
-  -- Potential business needs they've expressed.
-  business_needs    TEXT,
-  -- What you plan to do next.
-  next_steps        TEXT,
-  status            VARCHAR(32) NOT NULL DEFAULT 'new',
-  priority          VARCHAR(16) NOT NULL DEFAULT 'medium',
-  source            VARCHAR(255),
-  estimated_value   NUMERIC(12,2),
-  last_contact_date DATE,
-  next_action_date  DATE,
-  notes             TEXT,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS leads_next_action_idx ON leads (next_action_date);
-CREATE INDEX IF NOT EXISTS leads_status_idx ON leads (status);
-
--- History of AI-generated follow-up drafts per lead.
-CREATE TABLE IF NOT EXISTS followups (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id     UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-  content     TEXT NOT NULL,
-  model       VARCHAR(128),
-  worker      VARCHAR(255),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS followups_lead_idx ON followups (lead_id, created_at DESC);
-`;
+// Arbitrary constant. Blue/green deploys briefly run two backends; the
+// advisory lock stops both from applying the same migration at once.
+const MIGRATION_LOCK_KEY = 4_270_313;
 
 export async function migrate() {
-  await pool.query(SCHEMA);
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name       TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`);
+    const { rows } = await client.query("SELECT name FROM schema_migrations");
+    const applied = new Set(rows.map((r) => r.name));
+
+    const files = (await fs.readdir(MIGRATIONS_DIR))
+      .filter((f) => /^\d+_.+\.sql$/.test(f))
+      .sort();
+
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      const sql = await fs.readFile(new URL(file, MIGRATIONS_DIR), "utf8");
+      try {
+        await client.query("BEGIN");
+        await client.query(sql);
+        await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [file]);
+        await client.query("COMMIT");
+        console.log(`[seedbook] applied migration ${file}`);
+      } catch (e) {
+        await client.query("ROLLBACK");
+        e.message = `migration ${file} failed: ${e.message}`;
+        throw e;
+      }
+    }
+  } finally {
+    await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => {});
+    client.release();
+  }
 }
 
 export async function usersExist() {

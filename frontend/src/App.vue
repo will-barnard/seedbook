@@ -4,15 +4,20 @@ import { api } from "./api.js";
 import Auth from "./components/Auth.vue";
 import LeadList from "./components/LeadList.vue";
 import LeadDetail from "./components/LeadDetail.vue";
+import ProposalEditor from "./components/ProposalEditor.vue";
+import ProposalLog from "./components/ProposalLog.vue";
+import ProposalSettings from "./components/ProposalSettings.vue";
 
 const ready = ref(false);
 const authed = ref(false);
 const needsSetup = ref(false);
 const config = ref({ drydock: false, resend: false });
 
-// Simple view state: "list" or a lead id, or "new".
+// Simple view state: "list" | "detail" | "new" | "proposals" | "proposal" | "settings".
+// (Still no vue-router — six views is about where it starts to earn its keep.)
 const view = ref("list");
 const activeId = ref(null);
+const activeProposalId = ref(null);
 const toast = ref(null);
 
 function flash(msg, isError = false) {
@@ -64,6 +69,14 @@ function backToList() {
   view.value = "list";
   activeId.value = null;
 }
+function openProposal(id) {
+  activeProposalId.value = id;
+  view.value = "proposal";
+}
+function go(v) {
+  view.value = v;
+  activeProposalId.value = null;
+}
 
 async function runDigest() {
   try {
@@ -92,6 +105,11 @@ async function runDigest() {
       <div class="brand">
         <span class="seed">🌱</span>
         <h1>Seedbook</h1>
+        <nav class="nav">
+          <button class="ghost small" :class="{ on: ['list', 'detail', 'new'].includes(view) }" @click="backToList">Leads</button>
+          <button class="ghost small" :class="{ on: ['proposals', 'proposal'].includes(view) }" @click="go('proposals')">Proposals</button>
+          <button class="ghost small" :class="{ on: view === 'settings' }" @click="go('settings')">Rate card</button>
+        </nav>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="ghost small" @click="runDigest" title="Send the due-leads digest now">
@@ -108,12 +126,23 @@ async function runDigest() {
         @new="newLead"
       />
       <LeadDetail
-        v-else
+        v-else-if="view === 'detail' || view === 'new'"
+        :key="view + (activeId || '')"
         :lead-id="view === 'new' ? null : activeId"
         @back="backToList"
         @saved="backToList"
         @deleted="backToList"
+        @proposal="openProposal"
       />
+      <ProposalLog v-else-if="view === 'proposals'" @open="openProposal" />
+      <ProposalEditor
+        v-else-if="view === 'proposal'"
+        :key="activeProposalId"
+        :proposal-id="activeProposalId"
+        @back="openLead"
+        @deleted="openLead"
+      />
+      <ProposalSettings v-else-if="view === 'settings'" />
     </div>
   </template>
 

@@ -134,3 +134,79 @@ tbody tr:hover { background: var(--panel-2); }
   .row, .row-3, .grid-detail { grid-template-columns: 1fr; }
 }
 .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 4px 0 14px; }
+
+/* ── Nav ─────────────────────────────────────────────────── */
+.nav { display: flex; gap: 4px; margin-left: 18px; }
+.nav button.on { background: var(--panel-2); border-color: var(--border); color: var(--accent); }
+@media (max-width: 640px) { .nav { margin-left: 6px; } }
+
+.page-title { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+.hint { font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
+.small-link { font-size: 12px; }
+code { font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+
+/* ── Proposals ───────────────────────────────────────────── */
+.pst-draft { background: #2e3846; color: var(--muted); }
+.pst-sent { background: #3a2a55; color: #c4a8ff; }
+.pst-won { background: #14532d; color: #86efac; }
+.pst-lost { background: #4a1f1f; color: #fca5a5; }
+
+.proposal-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .proposal-grid { grid-template-columns: 1fr; } }
+
+.proposal-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; margin: 0 -10px; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+.proposal-row:hover { background: var(--panel-2); }
+
+.offer-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.offer-chip {
+  display: flex; align-items: center; gap: 8px; margin: 0;
+  border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px;
+  color: var(--text); font-size: 14px; cursor: pointer;
+}
+.offer-chip input { width: auto; margin: 0; }
+.offer-chip.on { border-color: var(--accent-d); background: rgba(34, 197, 94, 0.08); }
+.offer-chip .muted { font-size: 12px; }
+
+.line-item {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px 4px; margin-bottom: 12px;
+}
+.line-item.inactive { opacity: 0.55; }
+.line-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.line-item-head input { flex: 1; }
+.line-item-head button { margin-left: auto; }
+
+.offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.offering-grid .line-item { padding-bottom: 12px; }
+
+label.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; margin: 0 0 8px; cursor: pointer; }
+label.check input { width: auto; margin: 0; }
+
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; text-transform: capitalize; }
+.seg button.on { background: var(--accent-d); color: #05210f; font-weight: 600; }
+
+.draft-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.section-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.section-revise { display: flex; gap: 8px; margin-top: 8px; }
+.fixed-block {
+  margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px;
+  font-size: 12px; color: var(--muted);
+}
+.warn-inline { color: var(--amber); margin-left: 6px; }
+.warn-list { margin: 14px 0 0; padding: 10px 12px 10px 28px; border-radius: 8px; background: #3a3a1e; color: #e8d86a; font-size: 13px; }
+
+.outcome-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding: 14px 20px; }
+
+/* Email preview reads like the message will: light page, normal type. */
+.email-subject { margin: 14px 0 8px; font-size: 14px; }
+.email-preview {
+  background: #fbfbf9; color: #1d1d1b; border-radius: 8px; padding: 18px 20px;
+  font-size: 14px; line-height: 1.55;
+}
+.email-preview p { margin: 0 0 12px; }
+.email-preview ul, .email-preview ol { margin: 0 0 12px; padding-left: 22px; }
+.email-preview a { color: #0b57d0; }

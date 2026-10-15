@@ -3,7 +3,7 @@ import { ref, onMounted, inject, computed } from "vue";
 import { api } from "../api.js";
 
 const props = defineProps({ leadId: { type: String, default: null } });
-const emit = defineEmits(["back", "saved", "deleted"]);
+const emit = defineEmits(["back", "saved", "deleted", "proposal"]);
 const flash = inject("flash");
 const config = inject("config");
 
@@ -13,6 +13,8 @@ const PRIORITIES = ["low", "medium", "high"];
 const isNew = computed(() => !props.leadId);
 const form = ref(blank());
 const followups = ref([]);
+const proposals = ref([]);
+const creatingProposal = ref(false);
 const busy = ref(false);
 const generating = ref(false);
 const reminding = ref(false);
@@ -48,6 +50,7 @@ async function load() {
   try {
     const l = await api.getLead(props.leadId);
     followups.value = l.followups || [];
+    proposals.value = l.proposals || [];
     form.value = {
       ...blank(),
       ...l,
@@ -123,6 +126,25 @@ async function copy(text) {
   } catch {
     flash("Couldn't copy.", true);
   }
+}
+
+async function newProposal() {
+  if (isNew.value) return;
+  creatingProposal.value = true;
+  try {
+    // Save any edits first — the writer reads needs/relationship from the lead.
+    await api.updateLead(props.leadId, form.value);
+    const v = await api.createProposal(props.leadId);
+    emit("proposal", v.proposal.id);
+  } catch (e) {
+    flash(e.message, true);
+  } finally {
+    creatingProposal.value = false;
+  }
+}
+
+function proposalItems(p) {
+  return (p.line_items || []).map((i) => i.name).join(" / ") || "No offering picked yet";
 }
 
 function fmtTs(t) {
@@ -226,8 +248,26 @@ onMounted(load);
       </div>
     </div>
 
-    <!-- Right: AI follow-ups + reminders -->
+    <!-- Right: proposals, AI follow-ups, reminders -->
     <div>
+      <div class="card" style="margin-bottom:20px;" v-if="!isNew">
+        <div class="section-title">Proposals</div>
+        <div
+          v-for="p in proposals"
+          :key="p.id"
+          class="proposal-row"
+          @click="emit('proposal', p.id)"
+        >
+          <span>{{ proposalItems(p) }}</span>
+          <span class="spacer"></span>
+          <span class="muted" style="font-size:12px;">{{ new Date(p.sent_at || p.created_at).toISOString().slice(0, 10) }}</span>
+          <span class="badge" :class="'pst-' + p.status">{{ p.status }}</span>
+        </div>
+        <button class="primary" style="width:100%; margin-top:6px;" :disabled="creatingProposal" @click="newProposal">
+          {{ creatingProposal ? "…" : "📝 New proposal" }}
+        </button>
+      </div>
+
       <div class="card" style="margin-bottom:20px;">
         <div class="section-title">Follow-up assistant</div>
         <p class="muted" style="margin-top:0; font-size:13px;">

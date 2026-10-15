@@ -1,5 +1,6 @@
 // Client for the dry-dock generate API (see DRYDOCK-API.md in the dry-dock
-// repo). One blocking call → generated text. Used to draft sales follow-ups.
+// repo). One blocking call → generated text. Used to draft sales follow-ups
+// and proposals.
 
 const BASE_URL = process.env.DRYDOCK_BASE_URL || "";
 const API_KEY = process.env.DRYDOCK_API_KEY || "";
@@ -9,26 +10,53 @@ export function drydockConfigured() {
   return Boolean(BASE_URL && API_KEY);
 }
 
-// Raw generate call. Returns { content, model, worker, pool, elapsed_ms }.
-export async function generate({ system, prompt, messages, model, timeout }) {
-  if (!drydockConfigured()) {
-    throw new Error(
-      "dry-dock is not configured (set DRYDOCK_BASE_URL and DRYDOCK_API_KEY)."
-    );
-  }
+export function defaultPool() {
+  return POOL;
+}
+
+async function post(body) {
   const res = await fetch(`${BASE_URL.replace(/\/$/, "")}/api/v1/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-API-Key": API_KEY,
     },
-    body: JSON.stringify({ system, prompt, messages, model, pool: POOL, timeout }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`dry-dock generate ${res.status}: ${text}`);
+    const err = new Error(`dry-dock generate ${res.status}: ${text}`);
+    // Carried through so routes can tell "config wrong" (401) from
+    // "machine asleep" (503) from "prompt too long for the timeout" (504).
+    err.status = res.status;
+    throw err;
   }
   return res.json();
+}
+
+// Raw generate call. Returns { content, model, worker, pool, elapsed_ms }.
+//
+// `pool`: undefined → DRYDOCK_POOL; "" / null → unpinned (dry-dock walks its
+// own pool order, which survives a sleeping MacBook); otherwise that pool.
+export async function generate({ system, prompt, messages, model, timeout, pool }) {
+  if (!drydockConfigured()) {
+    const err = new Error(
+      "dry-dock is not configured (set DRYDOCK_BASE_URL and DRYDOCK_API_KEY)."
+    );
+    err.status = 503;
+    throw err;
+  }
+  const pinned = pool === undefined ? POOL : pool || undefined;
+  try {
+    return await post({ system, prompt, messages, model, pool: pinned, timeout });
+  } catch (e) {
+    // 503 = no worker online in that pool. A pinned pool is the usual reason
+    // (MacBook asleep), so retry once unpinned before giving up.
+    if (e.status === 503 && pinned) {
+      return post({ system, prompt, messages, model, timeout });
+    }
+    throw e;
+  }
 }
 
 const SYSTEM_PROMPT = `You are an assistant to an independent software

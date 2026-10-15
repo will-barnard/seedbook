@@ -75,7 +75,12 @@ leadsRouter.get("/:id", async (req, res) => {
     "SELECT * FROM followups WHERE lead_id = $1 ORDER BY created_at DESC",
     [req.params.id]
   );
-  res.json({ ...lead, followups });
+  const { rows: proposals } = await pool.query(
+    `SELECT id, status, line_items, sent_at, created_at, updated_at
+       FROM proposals WHERE lead_id = $1 ORDER BY created_at DESC`,
+    [req.params.id]
+  );
+  res.json({ ...lead, followups, proposals });
 });
 
 leadsRouter.post("/", async (req, res) => {
