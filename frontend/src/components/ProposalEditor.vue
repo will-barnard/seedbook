@@ -36,7 +36,13 @@ const working = ref(""); // "", "save", "generate", "revise", "revise:<section>"
 const lastWarnings = ref([]);
 const outcomeNote = ref("");
 const showNextSteps = ref(false);
-const defaultMyEnd = ref(""); // settings.my_end_template, for "reset to default"
+// Current Rate card templates. A part that matches its template follows it
+// (the server stores it as "inherit"); anything else is customised here.
+const defaults = computed(() => data.value?.defaults || { my_end: "", next_steps: "" });
+const customised = computed(() => ({
+  my_end: setup.value && setup.value.my_end !== defaults.value.my_end,
+  next_steps: setup.value && setup.value.next_steps !== defaults.value.next_steps,
+}));
 
 // Variables offered in "my end of things". Values come from the server.
 const MY_END_VARS = ["build_fee", "monthly", "yearly", "tier", "features", "discount", "pricing", "prices", "percent", "first_name"];
@@ -125,13 +131,8 @@ function selectVersion(id, { force = false } = {}) {
 
 async function load() {
   try {
-    const [view, offs, settings] = await Promise.all([
-      api.getProposal(props.proposalId),
-      api.listOfferings(true),
-      api.getSettings(),
-    ]);
+    const [view, offs] = await Promise.all([api.getProposal(props.proposalId), api.listOfferings(true)]);
     offerings.value = offs;
-    defaultMyEnd.value = settings.my_end_template || "";
     apply(view);
   } catch (e) {
     flash(e.message, true);
@@ -453,12 +454,23 @@ onMounted(load);
         </p>
 
         <div class="field">
-          <a href="#" @click.prevent="showNextSteps = !showNextSteps" class="small-link">
-            {{ showNextSteps ? "Hide" : "Edit" }} next steps for this proposal
-          </a>
+          <div class="section-row">
+            <a href="#" @click.prevent="showNextSteps = !showNextSteps" class="small-link">
+              {{ showNextSteps ? "Hide" : "Edit" }} next steps for this proposal
+            </a>
+            <span class="hint" style="margin:0;">
+              <template v-if="customised.next_steps">
+                customised here ·
+                <a href="#" class="small-link" @click.prevent="setup.next_steps = defaults.next_steps">use template</a>
+              </template>
+              <template v-else>following your template</template>
+            </span>
+          </div>
           <textarea v-if="showNextSteps" v-model="setup.next_steps" style="min-height:180px; margin-top:8px;" />
           <p v-if="showNextSteps" class="hint">
-            <code v-pre>{{tier}}</code> fills with the tier name(s), <code v-pre>{{first_name}}</code> with theirs. Change the default in Rate card &amp; settings.
+            <code v-pre>{{tier}}</code> fills with the tier name(s), <code v-pre>{{first_name}}</code> with theirs.
+            Editing here only changes this proposal; the template is on the Rate card page and drafts that
+            haven't been customised follow it.
           </p>
         </div>
 
@@ -512,9 +524,13 @@ onMounted(load);
               <div v-if="s.key === 'questions'" class="my-end">
                 <div class="section-row">
                   <label style="margin:0;">My end of things <span class="muted">— your words, never rewritten</span></label>
-                  <a v-if="defaultMyEnd && setup.my_end !== defaultMyEnd" href="#" class="small-link" @click.prevent="setup.my_end = defaultMyEnd">
-                    reset to default
-                  </a>
+                  <span class="hint" style="margin:0;">
+                    <template v-if="customised.my_end">
+                      customised here ·
+                      <a href="#" class="small-link" @click.prevent="setup.my_end = defaults.my_end">use template</a>
+                    </template>
+                    <template v-else>following your template</template>
+                  </span>
                 </div>
                 <textarea ref="myEndBox" v-model="setup.my_end" style="min-height:150px;" />
                 <div class="var-chips">

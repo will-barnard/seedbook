@@ -1,7 +1,8 @@
 <script setup>
-// Rate card + reusable proposal text. Changes here apply to proposals
-// created afterwards; existing proposals keep the prices and text they were
-// created with (edit those on the proposal itself).
+// Rate card + reusable proposal text. Template text reaches every draft
+// that hasn't customised that part; sent proposals keep exactly what went
+// out. Rate card PRICES are copied onto a proposal when an offering is
+// picked, so a price change never alters a quote already in progress.
 import { ref, onMounted, inject, computed } from "vue";
 import { api } from "../api.js";
 
@@ -170,14 +171,14 @@ onMounted(load);
         Written by dry-dock: <code v-pre>{{intro}}</code> <code v-pre>{{scope}}</code> <code v-pre>{{questions}}</code> <code v-pre>{{closing}}</code>.
         Yours, per proposal: <code v-pre>{{my_end}}</code> <code v-pre>{{next_steps}}</code> <code v-pre>{{signature}}</code>.
         A <code>**Heading**</code> on its own line is dropped when the section after it is empty.
-        Headings and fixed text here apply to proposals created after you save.
+        Changes here reach every draft right away; sent proposals keep exactly what went out.
       </p>
     </div>
     <div class="field">
       <label>Default “my end of things”</label>
       <textarea v-model="settings.my_end_template" style="min-height:150px;" />
       <p class="hint">
-        Each new proposal starts with this and you can edit it there. Price variables fill from the proposal's offerings:
+        Drafts follow this unless you've customised that proposal's copy. Price variables fill from the proposal's offerings:
         <code v-pre>{{build_fee}}</code> <code v-pre>{{monthly}}</code> <code v-pre>{{yearly}}</code> <code v-pre>{{tier}}</code>
         (first tier quoted), <code v-pre>{{features}}</code> (what the tier includes, as a list), <code v-pre>{{discount}}</code> (the 50% options, empty if not offered),
         <code v-pre>{{pricing}}</code> (every tier plus the discount), <code v-pre>{{prices}}</code> (every tier, no discount).

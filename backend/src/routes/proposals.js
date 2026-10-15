@@ -28,11 +28,46 @@ async function getLead(id) {
   return rows[0];
 }
 
+// Template fields a proposal inherits from settings. NULL on the proposal
+// means "use the current default", so editing a template on the Rate card
+// page reaches every draft that hasn't customised that part. A value is
+// stored only once Will edits it for this proposal. What actually went out
+// is frozen separately in sent_content, so sent proposals don't need a copy.
+const INHERITED = {
+  layout: "email_layout",
+  my_end: "my_end_template",
+  next_steps: "next_steps_template",
+  signature: "signature",
+  discount_intro: "discount_intro",
+  discount_percent: "discount_percent",
+};
+
+function defaultFor(col, s) {
+  return col === "discount_percent" ? Number(s.discount_percent) || 0 : s[INHERITED[col]] ?? "";
+}
+
+// The proposal with inherited fields filled in from settings, plus which
+// fields are inherited (for the UI's "following your default" labels).
+function resolve(p, s) {
+  const out = { ...p };
+  const inherits = {};
+  for (const col of Object.keys(INHERITED)) {
+    inherits[col] = p[col] == null;
+    if (inherits[col]) out[col] = defaultFor(col, s);
+  }
+  return { p: out, inherits };
+}
+
+async function getResolved(id) {
+  return resolve(await getProposal(id), await getSettings());
+}
+
 // Everything the editor needs in one response. Pricing, next steps etc. are
 // rendered here so the browser never does price math; it only drops the
 // draft's prose into proposal.layout for the live preview.
 async function view(id) {
-  const p = await getProposal(id);
+  const s = await getSettings();
+  const { p, inherits } = resolve(await getProposal(id), s);
   const lead = await getLead(p.lead_id);
   const { rows: versions } = await pool.query(
     "SELECT * FROM proposal_versions WHERE proposal_id = $1 ORDER BY version DESC",
@@ -40,6 +75,8 @@ async function view(id) {
   );
   return {
     proposal: p,
+    inherits,
+    defaults: { my_end: s.my_end_template, next_steps: s.next_steps_template },
     lead,
     versions,
     rendered: fixedParts(p, lead),
@@ -120,14 +157,11 @@ proposalsRouter.post(
   "/",
   ah(async (req, res) => {
     const lead = await getLead(req.body?.lead_id);
-    const s = await getSettings();
-    // Snapshot the reusable text now so later settings edits don't rewrite
-    // this proposal. Templates keep their {{variables}} until rendered.
+    // Template fields start NULL: the draft follows the current defaults
+    // until Will customises one (see INHERITED).
     const { rows } = await pool.query(
-      `INSERT INTO proposals (lead_id, layout, my_end, next_steps, signature, discount_percent, discount_intro)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [lead.id, s.email_layout, s.my_end_template, s.next_steps_template, s.signature,
-       Number(s.discount_percent) || 0, s.discount_intro]
+      "INSERT INTO proposals (lead_id) VALUES ($1) RETURNING id",
+      [lead.id]
     );
     res.status(201).json(await view(rows[0].id));
   })
@@ -149,6 +183,7 @@ proposalsRouter.put(
   "/:id",
   ah(async (req, res) => {
     await getProposal(req.params.id);
+    const s = await getSettings();
     const b = req.body || {};
     const data = {};
     for (const k of TEXT_FIELDS) if (k in b) data[k] = b[k] == null ? null : String(b[k]);
@@ -163,6 +198,17 @@ proposalsRouter.put(
       const n = Number(b.discount_percent);
       if (!Number.isFinite(n) || n < 0 || n > 100) throw httpError(422, "discount_percent must be 0–100.");
       data.discount_percent = n;
+    }
+    // A value identical to the current default is stored as NULL, so the
+    // proposal keeps following the template (and "reset to default" works by
+    // just sending the default back).
+    for (const col of Object.keys(INHERITED)) {
+      if (col in data && data[col] !== null) {
+        const same = col === "discount_percent"
+          ? Number(data[col]) === defaultFor(col, s)
+          : String(data[col]) === defaultFor(col, s);
+        if (same) data[col] = null;
+      }
     }
     const cols = Object.keys(data);
     if (cols.length) {
@@ -193,7 +239,7 @@ proposalsRouter.post(
   "/:id/generate",
   ah(async (req, res) => {
     requireDrydock();
-    const p = await getProposal(req.params.id);
+    const { p } = await getResolved(req.params.id);
     if (!(p.line_items || []).length) throw httpError(422, "Pick at least one offering before generating.");
     const lead = await getLead(p.lead_id);
     let out;
@@ -217,7 +263,7 @@ proposalsRouter.post(
     const { feedback, section } = req.body || {};
     if (!feedback || !String(feedback).trim()) throw httpError(422, "Feedback is required to revise.");
     if (section && !SECTIONS.includes(section)) throw httpError(422, `section must be one of: ${SECTIONS.join(", ")}.`);
-    const p = await getProposal(req.params.id);
+    const { p } = await getResolved(req.params.id);
     const lead = await getLead(p.lead_id);
     let base = req.body.base;
     if (!base) {
@@ -263,7 +309,9 @@ const EARLY_STAGES = ["new", "contacted", "qualified"];
 proposalsRouter.post(
   "/:id/send",
   ah(async (req, res) => {
-    const p = await getProposal(req.params.id);
+    // Resolved against today's templates: this is the moment the email is
+    // frozen into sent_content.
+    const { p } = await getResolved(req.params.id);
     const { rows } = await pool.query(
       "SELECT * FROM proposal_versions WHERE id = $1 AND proposal_id = $2",
       [req.body?.version_id, p.id]
