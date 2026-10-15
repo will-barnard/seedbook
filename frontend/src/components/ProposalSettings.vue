@@ -168,8 +168,19 @@ onMounted(load);
       <textarea v-model="settings.email_layout" style="min-height:260px; font-family: ui-monospace, monospace; font-size:13px;" />
       <p class="hint">
         Written by dry-dock: <code v-pre>{{intro}}</code> <code v-pre>{{scope}}</code> <code v-pre>{{questions}}</code> <code v-pre>{{closing}}</code>.
-        Built from the proposal: <code v-pre>{{pricing}}</code> <code v-pre>{{pricing_note}}</code> <code v-pre>{{next_steps}}</code> <code v-pre>{{signature}}</code>.
+        Yours, per proposal: <code v-pre>{{my_end}}</code> <code v-pre>{{next_steps}}</code> <code v-pre>{{signature}}</code>.
         A <code>**Heading**</code> on its own line is dropped when the section after it is empty.
+        Headings and fixed text here apply to proposals created after you save.
+      </p>
+    </div>
+    <div class="field">
+      <label>Default “my end of things”</label>
+      <textarea v-model="settings.my_end_template" style="min-height:150px;" />
+      <p class="hint">
+        Each new proposal starts with this and you can edit it there. Price variables fill from the proposal's offerings:
+        <code v-pre>{{build_fee}}</code> <code v-pre>{{monthly}}</code> <code v-pre>{{yearly}}</code> <code v-pre>{{tier}}</code>
+        (first tier quoted), <code v-pre>{{features}}</code> (what the tier includes, as a list), <code v-pre>{{discount}}</code> (the 50% options, empty if not offered),
+        <code v-pre>{{pricing}}</code> (every tier plus the discount), <code v-pre>{{prices}}</code> (every tier, no discount).
       </p>
     </div>
     <div class="field">

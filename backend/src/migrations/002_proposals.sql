@@ -44,19 +44,18 @@ CREATE TABLE proposals (
   -- discount doesn't alter this proposal.
   discount_percent NUMERIC(5,2) NOT NULL DEFAULT 50,
   discount_intro   TEXT,
-  -- Off by default: Will's proposals quote the tier by name and price, not
-  -- the feature list (that's on his site).
-  show_features    BOOLEAN NOT NULL DEFAULT FALSE,
   -- "(or $100/year)" after each monthly price. Yearly is always 10× the
   -- monthly being quoted, so a 50%-off monthly gets a 50%-off yearly too.
   show_yearly      BOOLEAN NOT NULL DEFAULT TRUE,
-  -- Will's own words, inserted verbatim after the prices — e.g. a one-off
-  -- deal like "the shop work would normally push this to Commerce".
-  pricing_note     TEXT,
-  -- Email layout, next-steps template and signature are copied from
-  -- settings at creation. Templates keep their {{variables}} and are
-  -- rendered whenever the proposal is displayed.
+  -- Email layout, "my end of things", next-steps template and signature are
+  -- copied from settings at creation and editable per proposal. Templates
+  -- keep their {{variables}} and are rendered whenever the proposal is
+  -- displayed, so prices always come from line_items.
   layout           TEXT,
+  -- Will's offer, in his words. Variables ({{build_fee}}, {{features}},
+  -- {{monthly}}, {{yearly}}, {{tier}}, {{discount}}, {{pricing}}…) are filled
+  -- from line_items; anything else he types goes out as written.
+  my_end           TEXT,
   next_steps       TEXT,
   signature        TEXT,
   status           VARCHAR(16) NOT NULL DEFAULT 'draft',  -- draft|sent|won|lost
@@ -132,17 +131,22 @@ INSERT INTO settings (key, value) VALUES
 
 **My end of things**
 
-Feel free to check out my portfolio website: [will-barnard.com](https://will-barnard.com)!
-
-{{pricing}}
-
-{{pricing_note}}
+{{my_end}}
 
 {{next_steps}}
 
 {{closing}}
 
 {{signature}}'),
+  -- Default "my end of things", in the words of Will's guitar-course email.
+  -- {{build_fee}}/{{monthly}}/{{yearly}}/{{tier}} quote the first line item;
+  -- use {{pricing}} instead when quoting more than one tier.
+  ('my_end_template',
+'Feel free to check out my portfolio website: [will-barnard.com](https://will-barnard.com)!
+
+The pricing I can offer for this project is {{build_fee}} build fee, and {{monthly}} per month (or {{yearly}}/year). This is on my website as the {{tier}}.
+
+{{discount}}'),
   ('next_steps_template',
 '**Next steps, when you are ready**
 

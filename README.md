@@ -73,9 +73,11 @@ From a lead, **New proposal** opens the editor:
    fee), pick a tone, and write your directions.
 2. **Write** — dry-dock writes the subject, intro, scope recap, open
    questions and closing, and Seedbook pours them into the email layout
-   (headings, portfolio line, pricing, your pricing note, next steps).
-   Pricing — including yearly at 10× monthly — is built by Seedbook from the
-   setup; the model never sees or writes a price.
+   along with your parts. "My end of things" is yours: an editable box per
+   proposal where you write the pricing paragraph in your own words and drop
+   in `{{build_fee}}`, `{{monthly}}`, `{{yearly}}`, `{{tier}}`, `{{features}}`, `{{discount}}`
+   or `{{pricing}}` — the figures (yearly at 10× monthly, discount math) come
+   from the offerings. The model never sees or writes a price.
 3. **Hone** — give feedback on the whole draft or rewrite one section. Every
    draft, revision and hand edit is kept as a version.
 4. **Send** — *Copy email* puts rich text (bold, lists, links) on the

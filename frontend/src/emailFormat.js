@@ -80,6 +80,16 @@ export function toPlain(md) {
     .join("\n\n");
 }
 
+// Fill {{variables}} and tidy the gap an empty one leaves. The values come
+// from the server (rendered prices etc.) — no price math happens here.
+// MIRROR of renderTemplate in backend/src/services/proposalText.js.
+export function renderTemplate(tpl, vars) {
+  return String(tpl || "")
+    .replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // Fill an email layout. The layout is blank-line-separated chunks; a chunk
 // that is only a **Heading** is dropped when the placeholder chunk right
 // after it renders empty, so an unused section takes its heading with it.
@@ -134,10 +144,16 @@ export async function copyForEmail(md) {
 }
 
 // Things worth a second look before the draft goes out.
-export function lint(sections) {
+// `tierNames`: offering names being quoted ("Professional"…) — the model is
+// told nothing about tiers, so one turning up in its prose is worth a flag.
+export function lint(sections, tierNames = []) {
   const warns = [];
+  const tierRe = tierNames.length
+    ? new RegExp(`\\b(${tierNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s+(tier|plan|package)\\b`, "i")
+    : null;
   for (const [k, v] of Object.entries(sections || {})) {
     if (!v) continue;
+    if (tierRe && tierRe.test(v)) warns.push(`The ${k} mentions a tier — that belongs in "My end of things".`);
     if (/\$\s?\d/.test(v)) warns.push(`The ${k} mentions a dollar amount — prices should only come from the pricing block.`);
     if (/\d+\s?%/.test(v)) warns.push(`The ${k} mentions a percentage — check it matches the discount.`);
     if (/\[(?:your|client|name|company)[^\]]*\](?!\()/i.test(v)) warns.push(`The ${k} has a placeholder like [Name].`);

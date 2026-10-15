@@ -124,9 +124,10 @@ proposalsRouter.post(
     // Snapshot the reusable text now so later settings edits don't rewrite
     // this proposal. Templates keep their {{variables}} until rendered.
     const { rows } = await pool.query(
-      `INSERT INTO proposals (lead_id, layout, next_steps, signature, discount_percent, discount_intro)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [lead.id, s.email_layout, s.next_steps_template, s.signature, Number(s.discount_percent) || 0, s.discount_intro]
+      `INSERT INTO proposals (lead_id, layout, my_end, next_steps, signature, discount_percent, discount_intro)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [lead.id, s.email_layout, s.my_end_template, s.next_steps_template, s.signature,
+       Number(s.discount_percent) || 0, s.discount_intro]
     );
     res.status(201).json(await view(rows[0].id));
   })
@@ -140,7 +141,7 @@ proposalsRouter.get(
 );
 
 const TEXT_FIELDS = [
-  "approach_notes", "extra_details", "pricing_note", "layout",
+  "approach_notes", "extra_details", "my_end", "layout",
   "next_steps", "signature", "discount_intro", "outcome_note",
 ];
 
@@ -157,7 +158,6 @@ proposalsRouter.put(
     }
     if ("line_items" in b) data.line_items = JSON.stringify(cleanLineItems(b.line_items));
     if ("offer_discount" in b) data.offer_discount = Boolean(b.offer_discount);
-    if ("show_features" in b) data.show_features = Boolean(b.show_features);
     if ("show_yearly" in b) data.show_yearly = Boolean(b.show_yearly);
     if ("discount_percent" in b) {
       const n = Number(b.discount_percent);

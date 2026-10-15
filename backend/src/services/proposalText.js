@@ -58,48 +58,79 @@ function off(amount, pct) {
   return Math.round(amount * (1 - pct / 100) * 100) / 100;
 }
 
-export function renderPricing(p) {
-  const items = p.line_items || [];
-  if (!items.length) return "";
-  const many = items.length > 1;
-  const pct = Number(p.discount_percent ?? 50);
+// One line per quoted item: tier name and price, the way Will writes it.
+export function renderPrices(p) {
   const yearly = p.show_yearly !== false;
-  const blocks = [];
+  return (p.line_items || [])
+    .map((item) => `**${itemLabel(item)}**: ${priceLine(Number(item.build_fee), Number(item.monthly_fee), { yearly })}`)
+    .join("\n\n");
+}
 
-  for (const item of items) {
+// What the quoted tier includes, as a list. With more than one tier, each
+// gets its own labelled list.
+export function renderFeatures(p) {
+  const items = (p.line_items || []).filter((i) => i.features?.length);
+  if (!items.length) return "";
+  if ((p.line_items || []).length === 1) return items[0].features.map((f) => `- ${f}`).join("\n");
+  return items
+    .map((i) => [`**${itemLabel(i)}**`, ...i.features.map((f) => `- ${f}`)].join("\n"))
+    .join("\n\n");
+}
+
+// The "your choice: % off build or % off monthly" offer, with the math done.
+// Empty when the offer isn't ticked.
+export function renderDiscount(p) {
+  const items = p.line_items || [];
+  const pct = Number(p.discount_percent ?? 50);
+  if (!p.offer_discount || !(pct > 0)) return "";
+  const yearly = p.show_yearly !== false;
+  const eligible = items.filter(
+    (i) => i.discount_eligible !== false && (Number(i.build_fee) > 0 || Number(i.monthly_fee) > 0)
+  );
+  if (!eligible.length) return "";
+  const lines = [fillTemplate(p.discount_intro, { percent: pct })];
+  for (const item of eligible) {
     const build = Number(item.build_fee);
     const monthly = Number(item.monthly_fee);
-    if (p.show_features) {
-      // Long form: tier, tagline, what's included, then the price.
-      const lines = [`**${itemLabel(item)}**` + (item.tagline ? ` — ${item.tagline}` : "")];
-      if (item.features?.length) lines.push(...item.features.map((f) => `- ${f}`));
-      blocks.push(lines.join("\n"));
-      blocks.push(priceLine(build, monthly, { bold: true, yearly }));
-    } else {
-      // Short form, the way Will writes it: tier name and price on one line.
-      blocks.push(`**${itemLabel(item)}**: ${priceLine(build, monthly, { yearly })}`);
-    }
+    if (items.length > 1) lines.push(`**${itemLabel(item)}**`);
+    if (build > 0)
+      lines.push(`- ${pct}% off the build fee: ${priceLine(off(build, pct), monthly, { yearly })}`);
+    if (monthly > 0)
+      lines.push(`- ${pct}% off the monthly fee: ${priceLine(build, off(monthly, pct), { yearly })}`);
   }
+  return lines.join("\n");
+}
 
-  if (p.offer_discount && pct > 0) {
-    const eligible = items.filter(
-      (i) => i.discount_eligible !== false && (Number(i.build_fee) > 0 || Number(i.monthly_fee) > 0)
-    );
-    if (eligible.length) {
-      const lines = [fillTemplate(p.discount_intro, { percent: pct })];
-      for (const item of eligible) {
-        const build = Number(item.build_fee);
-        const monthly = Number(item.monthly_fee);
-        if (many) lines.push(`**${itemLabel(item)}**`);
-        if (build > 0)
-          lines.push(`- ${pct}% off the build fee: ${priceLine(off(build, pct), monthly, { yearly })}`);
-        if (monthly > 0)
-          lines.push(`- ${pct}% off the monthly fee: ${priceLine(build, off(monthly, pct), { yearly })}`);
-      }
-      blocks.push(lines.join("\n"));
-    }
-  }
-  return blocks.join("\n\n");
+export function renderPricing(p) {
+  return [renderPrices(p), renderDiscount(p)].filter(Boolean).join("\n\n");
+}
+
+// Variables available in "my end of things" (and the layout). The single
+// figures quote the FIRST line item — for multi-tier proposals use
+// {{pricing}} / {{prices}}, which list every item.
+export function priceVars(p, lead) {
+  const first = (p.line_items || [])[0];
+  const build = Number(first?.build_fee || 0);
+  const monthly = Number(first?.monthly_fee || 0);
+  return {
+    pricing: renderPricing(p),
+    prices: renderPrices(p),
+    discount: renderDiscount(p),
+    features: renderFeatures(p),
+    tier: tierLabel(p.line_items),
+    build_fee: first ? money(build) : "",
+    monthly: first ? money(monthly) : "",
+    yearly: first ? money(monthly * YEARLY_MULTIPLIER) : "",
+    percent: Number(p.discount_percent ?? 50),
+    first_name: firstName(lead),
+    company: lead?.company || "",
+  };
+}
+
+// Fill a template and tidy the gaps an empty variable leaves behind
+// (e.g. {{discount}} when no discount is offered).
+export function renderTemplate(tpl, vars) {
+  return fillTemplate(tpl, vars).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export function renderNextSteps(p, lead) {
@@ -149,13 +180,12 @@ export function renderLayout(layout, parts) {
 // Everything except the model-written sections, ready to merge with a
 // version's prose.
 export function fixedParts(p, lead) {
+  const vars = priceVars(p, lead);
   return {
-    pricing: renderPricing(p),
-    pricing_note: p.pricing_note || "",
+    ...vars,
+    my_end: renderTemplate(p.my_end, vars),
     next_steps: renderNextSteps(p, lead),
     signature: p.signature || "",
-    first_name: firstName(lead),
-    company: lead?.company || "",
   };
 }
 

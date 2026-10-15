@@ -22,7 +22,9 @@ export const TONES = {
 
 const FIXED_DESCRIPTIONS = {
   pricing: "[inserted automatically: the tier(s) and exact prices]",
-  pricing_note: "[inserted automatically: Will's own note about pricing, if any]",
+  my_end: "[inserted automatically: Will's own section — his offer, which tier, what it includes, and the exact pricing]",
+  prices: "[inserted automatically: the tier(s) and exact prices]",
+  discount: "[inserted automatically: discount options, if any]",
   next_steps:
     "[inserted automatically: numbered next steps — set up a domain on Cloudflare, create an account and pay the build fee, send creative assets]",
   signature: "[inserted automatically: signature]",
@@ -51,7 +53,10 @@ function describeLayout(layout) {
 function redactPrices(text) {
   return String(text || "")
     .replace(/\$\s?[\d,]+(?:\.\d+)?(?:\s*(?:\/|per)\s*(?:month|mo|year|yr))?/gi, "[price]")
-    .replace(/\b\d+\s?%/g, "[percent]");
+    .replace(/\b\d+\s?%/g, "[percent]")
+    // Tier talk lives in Will's own section; seeing `"Professional" tier`
+    // in the example invites the model to put it in the scope.
+    .replace(/"?\b[A-Z][a-zA-Z]+\b"?\s+tier\b"?/g, "[tier]");
 }
 
 function systemPrompt(settings, layout) {
@@ -67,12 +72,12 @@ ${describeLayout(layout)}
 What each part you write should be:
 - SUBJECT: one line, under 70 characters, no quotes.
 - INTRO: a greeting using their first name (if Will's notes say there are several people, greet them as a group), then one to three short sentences — the meeting or context, and that you're excited about the project.
-- SCOPE: one short lead-in line, then a "- " bullet list of concrete things the site will do or that were agreed, one line each. Include anything explicitly out of scope for v1 if the notes mention it. Use only details you were given.
+- SCOPE: this section is about THEIR project, so they feel heard. One short lead-in line saying what they want, then a "- " bullet list of what was agreed or what they asked for, in their terms, one line each. Include anything explicitly out of scope for v1 if the notes mention it. Take every bullet from the client details and Will's notes — never pad it with generic website features.
 - QUESTIONS: a "- " bullet list of open questions Will needs answered, taken from his notes and the client details. Don't ask about anything the next steps already cover (domain, account, sending assets). If there are no genuine open questions, leave it empty.
 - CLOSING: one short line that comes last, after the next steps. No sign-off, no name.
 
 Rules:
-- Never state a price, fee, dollar amount, percentage or discount. Pricing is inserted for you.
+- Will presents his offer himself in his own section: which tier or plan, what it includes, and the price. Never mention tiers, plans, packages, prices, fees, dollar amounts, percentages or discounts anywhere you write.
 - Don't write headings — they're in the layout.
 - No markdown other than "- " bullets and occasional **bold**. No placeholders like [Name].
 - Don't invent facts about the client or the project.
@@ -112,14 +117,10 @@ function briefing(p, lead) {
     .map(([k, v]) => `- ${k}: ${v}`)
     .join("\n");
 
-  const items = (p.line_items || [])
-    .map((i) => {
-      const label = i.offering_id ? `${i.name} tier` : i.name;
-      const feats = i.features?.length ? ` Includes: ${i.features.join("; ")}.` : "";
-      return `- ${label}${i.tagline ? `: ${i.tagline}.` : "."}${feats}`;
-    })
-    .join("\n");
-
+  // Deliberately no line items here. Given the tier and its feature list,
+  // the model folds "admin dashboard, SEO basics, 3 rounds of revisions"
+  // into the scope recap, which should only reflect what the client asked
+  // for. The offer lives entirely in Will's "my end of things".
   const lines = [
     `Write a proposal email for this client.`,
     `CLIENT\n${client}`,
@@ -127,14 +128,6 @@ function briefing(p, lead) {
   ];
   if (p.approach_notes?.trim()) lines.push(`WILL'S DIRECTIONS\n${p.approach_notes.trim()}`);
   if (p.extra_details?.trim()) lines.push(`WILL'S NOTES FOR THIS PROPOSAL (scope, open questions, context)\n${p.extra_details.trim()}`);
-  let offer = `WHAT IS BEING OFFERED (prices are inserted separately — don't mention them)\n${items}`;
-  if ((p.line_items || []).length > 1) {
-    offer += `\n- More than one option is being quoted; help them see which fits.`;
-  }
-  if (p.offer_discount) {
-    offer += `\n- The pricing includes Will's usual friends discount. Don't describe it; it's spelled out below your text.`;
-  }
-  lines.push(offer);
   return lines.join("\n\n");
 }
 

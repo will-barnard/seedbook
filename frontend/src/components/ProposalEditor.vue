@@ -7,7 +7,7 @@
 // preview refreshes.
 import { ref, computed, onMounted, inject } from "vue";
 import { api } from "../api.js";
-import { toHtml, toPlain, renderLayout, copyForEmail, lint } from "../emailFormat.js";
+import { toHtml, toPlain, renderLayout, renderTemplate, copyForEmail, lint } from "../emailFormat.js";
 
 const props = defineProps({ proposalId: { type: String, required: true } });
 const emit = defineEmits(["back", "deleted"]);
@@ -36,6 +36,10 @@ const working = ref(""); // "", "save", "generate", "revise", "revise:<section>"
 const lastWarnings = ref([]);
 const outcomeNote = ref("");
 const showNextSteps = ref(false);
+const defaultMyEnd = ref(""); // settings.my_end_template, for "reset to default"
+
+// Variables offered in "my end of things". Values come from the server.
+const MY_END_VARS = ["build_fee", "monthly", "yearly", "tier", "features", "discount", "pricing", "prices", "percent", "first_name"];
 
 function blankDraft() {
   return Object.fromEntries(SECTIONS.map((s) => [s.key, ""]));
@@ -50,13 +54,34 @@ const draftDirty = computed(() => {
   return SECTIONS.some((s) => (draft.value[s.key] || "") !== (v[s.key] || ""));
 });
 const hasDraft = computed(() => SECTIONS.some((s) => draft.value[s.key]?.trim()));
-// Server-rendered fixed parts (pricing, next steps, signature…) plus the
-// draft's prose, poured into the proposal's layout.
+// "My end of things" renders live as you type; the price values it fills in
+// come from the last saved setup (server-rendered).
+const myEnd = computed(() => (setup.value ? renderTemplate(setup.value.my_end, data.value.rendered) : ""));
+const myEndNotes = computed(() => {
+  const t = setup.value?.my_end || "";
+  const notes = [];
+  const n = setup.value?.line_items.length || 0;
+  if (n > 1 && !/\{\{\s*(pricing|prices)\s*\}\}/.test(t))
+    notes.push("You're quoting more than one tier, but {{build_fee}}/{{monthly}} only show the first. Use {{pricing}} to list them all.");
+  if (setup.value?.offer_discount && !/\{\{\s*(pricing|discount)\s*\}\}/.test(t))
+    notes.push("The 50% offer is ticked but this section has no {{discount}} or {{pricing}}, so the client won't see it.");
+  if (t.trim() && !/\{\{\s*(pricing|prices|build_fee|monthly|yearly)\s*\}\}/.test(t))
+    notes.push("No price variables here, so any price you type won't follow the rate card.");
+  return notes;
+});
+
+// Server-rendered fixed parts (next steps, signature…), the live "my end",
+// and the draft's prose, poured into the proposal's layout.
 const preview = computed(() =>
-  data.value ? renderLayout(p.value.layout, { ...data.value.rendered, ...draft.value }) : ""
+  data.value
+    ? renderLayout(p.value.layout, { ...data.value.rendered, my_end: myEnd.value, ...draft.value })
+    : ""
 );
 const previewHtml = computed(() => toHtml(preview.value));
-const warnings = computed(() => [...lastWarnings.value, ...lint(draft.value)]);
+const warnings = computed(() => [
+  ...lastWarnings.value,
+  ...lint(draft.value, (setup.value?.line_items || []).filter((i) => i.offering_id).map((i) => i.name)),
+]);
 const busy = computed(() => Boolean(working.value));
 
 function setupFrom(prop) {
@@ -66,9 +91,8 @@ function setupFrom(prop) {
     extra_details: prop.extra_details || "",
     line_items: JSON.parse(JSON.stringify(prop.line_items || [])),
     offer_discount: prop.offer_discount,
-    show_features: prop.show_features,
     show_yearly: prop.show_yearly,
-    pricing_note: prop.pricing_note || "",
+    my_end: prop.my_end || "",
     discount_percent: Number(prop.discount_percent),
     next_steps: prop.next_steps || "",
   };
@@ -101,8 +125,13 @@ function selectVersion(id, { force = false } = {}) {
 
 async function load() {
   try {
-    const [view, offs] = await Promise.all([api.getProposal(props.proposalId), api.listOfferings(true)]);
+    const [view, offs, settings] = await Promise.all([
+      api.getProposal(props.proposalId),
+      api.listOfferings(true),
+      api.getSettings(),
+    ]);
     offerings.value = offs;
+    defaultMyEnd.value = settings.my_end_template || "";
     apply(view);
   } catch (e) {
     flash(e.message, true);
@@ -110,6 +139,21 @@ async function load() {
 }
 
 // ── Setup ──────────────────────────────────────────────────
+
+const myEndBox = ref(null);
+// Drop {{var}} in at the cursor rather than at the end.
+function insertVar(v) {
+  const el = Array.isArray(myEndBox.value) ? myEndBox.value[0] : myEndBox.value;
+  const text = setup.value.my_end || "";
+  const at = el ? el.selectionStart ?? text.length : text.length;
+  const token = `{{${v}}}`;
+  setup.value.my_end = text.slice(0, at) + token + text.slice(at);
+  requestAnimationFrame(() => {
+    if (!el) return;
+    el.focus();
+    el.selectionStart = el.selectionEnd = at + token.length;
+  });
+}
 
 function isPicked(o) {
   return setup.value.line_items.some((i) => i.offering_id === o.id);
@@ -373,18 +417,10 @@ onMounted(load);
           <input type="checkbox" v-model="setup.show_yearly" />
           Show yearly price too (10× monthly)
         </label>
-        <label class="check">
-          <input type="checkbox" v-model="setup.show_features" />
-          List what each tier includes
-        </label>
-        <div class="field" style="margin-top:10px;">
-          <label>Pricing note — your words, added after the prices as-is</label>
-          <textarea
-            v-model="setup.pricing_note"
-            style="min-height:56px;"
-            placeholder="e.g. The shop integrations would normally push this to the Commerce tier — that's the discount I'm happy to give here."
-          />
-        </div>
+        <p class="hint">
+          The tier, what it includes and the price go in “My end of things” in the draft — dry-dock never sees them,
+          so the website recap stays about the client's project.
+        </p>
 
         <div class="section-title" style="margin-top:18px;">Your direction</div>
         <div class="field">
@@ -471,10 +507,32 @@ onMounted(load);
                   {{ working === `revise:${s.key}` ? "Rewriting…" : "Rewrite" }}
                 </button>
               </div>
-              <!-- Show where the fixed blocks land (default layout: before the closing) -->
-              <div v-if="s.key === 'questions'" class="fixed-block">
-                “My end of things”, pricing and next steps go here, built from the setup.
-                <span v-if="setupDirty" class="warn-inline">Save setup to refresh them.</span>
+              <!-- "My end of things": yours to write, not the model's. Sits
+                   where it lands in the default layout (after questions). -->
+              <div v-if="s.key === 'questions'" class="my-end">
+                <div class="section-row">
+                  <label style="margin:0;">My end of things <span class="muted">— your words, never rewritten</span></label>
+                  <a v-if="defaultMyEnd && setup.my_end !== defaultMyEnd" href="#" class="small-link" @click.prevent="setup.my_end = defaultMyEnd">
+                    reset to default
+                  </a>
+                </div>
+                <textarea ref="myEndBox" v-model="setup.my_end" style="min-height:150px;" />
+                <div class="var-chips">
+                  <span class="muted">Insert:</span>
+                  <button v-for="v in MY_END_VARS" :key="v" type="button" class="chip" @click="insertVar(v)">{{ v }}</button>
+                </div>
+                <p class="hint" style="margin-bottom:0;">
+                  Prices fill in from the offerings on the left: {{ data.rendered.build_fee || "—" }} build ·
+                  {{ data.rendered.monthly || "—" }}/mo · {{ data.rendered.yearly || "—" }}/yr.
+                  Next steps follow this section.
+                </p>
+                <ul v-if="myEndNotes.length" class="warn-list" style="margin-top:8px;">
+                  <li v-for="(n, i) in myEndNotes" :key="i">{{ n }}</li>
+                </ul>
+                <div v-if="setupDirty" class="my-end-save">
+                  <span class="warn-inline" style="margin:0;">Unsaved — prices refresh once saved.</span>
+                  <button class="small primary" :disabled="busy" @click="saveSetup()">Save</button>
+                </div>
               </div>
             </div>
 

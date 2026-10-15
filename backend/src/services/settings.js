@@ -6,6 +6,7 @@ import { pool } from "../db.js";
 export const SETTING_KEYS = [
   "business_summary",
   "email_layout",
+  "my_end_template",
   "next_steps_template",
   "discount_percent",
   "discount_intro",
@@ -20,7 +21,8 @@ export const SETTING_KEYS = [
 const DEFAULTS = {
   business_summary: "",
   email_layout:
-    "{{intro}}\n\n{{scope}}\n\n{{questions}}\n\n{{pricing}}\n\n{{pricing_note}}\n\n{{next_steps}}\n\n{{closing}}\n\n{{signature}}",
+    "{{intro}}\n\n{{scope}}\n\n{{questions}}\n\n{{my_end}}\n\n{{next_steps}}\n\n{{closing}}\n\n{{signature}}",
+  my_end_template: "{{pricing}}",
   next_steps_template: "",
   discount_percent: "50",
   discount_intro:
